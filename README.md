@@ -1,4 +1,4 @@
-# Food Ordering System
+# Enterprise order processing platform
 
 [![Java](https://img.shields.io/badge/Java-17-orange.svg)](https://www.oracle.com/java/technologies/javase/jdk17-archive-downloads.html)
 
@@ -290,13 +290,6 @@ We welcome contributions! To contribute:
 
 This project is licensed under the **MIT License**. See the [LICENSE](https://github.com/sogutemir/FoodOrderingSystem/blob/main/LICENSE) file for details.
 
-## Contact
 
-**Emir SoGood**
-
-- **GitHub**: [@sogutemir](https://github.com/sogutemir)
-- **Email**: [sogutemir72@gmail.com](mailto:sogutemir72@gmail.com)
-
-Project Link: [FoodOrderingSystem](https://github.com/sogutemir/FoodOrderingSystem)
 
 ---
