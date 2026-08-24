@@ -29,6 +29,7 @@ public class OrderOutboxEntity {
     private OutboxStatus outboxStatus;
     @Enumerated(EnumType.STRING)
     private OrderApprovalStatus approvalStatus;
+    @Version
     private int version;
 
 

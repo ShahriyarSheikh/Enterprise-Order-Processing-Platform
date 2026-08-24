@@ -1,41 +1,43 @@
 server:
-  port: 8181
+  port: ${ORDER_SERVICE_PORT:8181}
 
 logging:
   level:
-    com.food.ordering.system: DEBUG
+    com.food.ordering.system: ${APP_LOG_LEVEL:INFO}
 
 order-service:
-  payment-request-topic-name: payment-request
-  payment-response-topic-name: payment-response
-  restaurant-approval-request-topic-name: restaurant-approval-request
-  restaurant-approval-response-topic-name: restaurant-approval-response
-  outbox-scheduler-fixed-rate: 10000
-  outbox-scheduler-initial-delay: 10000
+  payment-request-topic-name: ${PAYMENT_REQUEST_TOPIC:payment-request}
+  payment-response-topic-name: ${PAYMENT_RESPONSE_TOPIC:payment-response}
+  restaurant-approval-request-topic-name: ${RESTAURANT_APPROVAL_REQUEST_TOPIC:restaurant-approval-request}
+  restaurant-approval-response-topic-name: ${RESTAURANT_APPROVAL_RESPONSE_TOPIC:restaurant-approval-response}
+  outbox-scheduler-fixed-rate: ${ORDER_OUTBOX_SCHEDULER_FIXED_RATE:10000}
+  outbox-scheduler-initial-delay: ${ORDER_OUTBOX_SCHEDULER_INITIAL_DELAY:10000}
 
 spring:
+  application:
+    name: order-service
   jpa:
     open-in-view: false
-    show-sql: true
-    database-platform: org.hibernate.dialect.PostgreSQL9Dialect
-    properties:
-      hibernate:
-        dialect: org.hibernate.dialect.PostgreSQL9Dialect
+    show-sql: ${JPA_SHOW_SQL:false}
   datasource:
-    url: jdbc:postgresql://localhost:5432/postgres?currentSchema=order&binaryTransfer=true&reWriteBatchedInserts=true&stringtype=unspecified
-    username: postgres
-    password: 123456
+    url: "${ORDER_DATASOURCE_URL:jdbc:postgresql://localhost:5432/postgres?currentSchema=order&binaryTransfer=true&reWriteBatchedInserts=true&stringtype=unspecified}"
+    username: ${DATABASE_USERNAME:postgres}
+    password: ${DATABASE_PASSWORD}
     driver-class-name: org.postgresql.Driver
-    platform: postgres
-    schema: classpath:init-schema.sql
-    initialization-mode: always
+  flyway:
+    enabled: true
+    locations: classpath:db/migration
+    schemas: order
+    default-schema: order
+    create-schemas: true
+    clean-disabled: true
 
 kafka-config:
-  bootstrap-servers: localhost:19092, localhost:29092, localhost:39092
+  bootstrap-servers: ${KAFKA_BOOTSTRAP_SERVERS:localhost:19092,localhost:29092,localhost:39092}
   schema-registry-url-key: schema.registry.url
-  schema-registry-url: http://localhost:8081
-  num-of-partitions: 3
-  replication-factor: 3
+  schema-registry-url: ${SCHEMA_REGISTRY_URL:http://localhost:8081}
+  num-of-partitions: ${KAFKA_PARTITIONS:3}
+  replication-factor: ${KAFKA_REPLICATION_FACTOR:3}
 
 kafka-producer-config:
   key-serializer-class: org.apache.kafka.common.serialization.StringSerializer
@@ -51,8 +53,8 @@ kafka-producer-config:
 kafka-consumer-config:
   key-deserializer: org.apache.kafka.common.serialization.StringDeserializer
   value-deserializer: io.confluent.kafka.serializers.KafkaAvroDeserializer
-  payment-consumer-group-id: payment-topic-consumer
-  restaurant-approval-consumer-group-id: restaurant-approval-topic-consumer
+  payment-consumer-group-id: ${ORDER_PAYMENT_CONSUMER_GROUP_ID:payment-topic-consumer}
+  restaurant-approval-consumer-group-id: ${ORDER_RESTAURANT_CONSUMER_GROUP_ID:restaurant-approval-topic-consumer}
   auto-offset-reset: earliest
   specific-avro-reader-key: specific.avro.reader
   specific-avro-reader: true
@@ -66,3 +68,22 @@ kafka-consumer-config:
   max-partition-fetch-bytes-default: 1048576
   max-partition-fetch-bytes-boost-factor: 1
   poll-timeout-ms: 150
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info
+  endpoint:
+    health:
+      probes:
+        enabled: true
+      show-details: never
+  info:
+    env:
+      enabled: true
+
+info:
+  application:
+    name: ${spring.application.name}
+    description: Order creation, tracking, and saga orchestration
