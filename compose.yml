@@ -1,0 +1,166 @@
+name: enterprise-order-platform
+
+x-application-environment: &application-environment
+  DATABASE_USERNAME: postgres
+  DATABASE_PASSWORD: local-dev-password
+  KAFKA_BOOTSTRAP_SERVERS: kafka:9092
+  SCHEMA_REGISTRY_URL: http://schema-registry:8081
+
+services:
+  postgres:
+    image: postgres:14-alpine
+    environment:
+      POSTGRES_DB: postgres
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: local-dev-password
+    ports:
+      - "127.0.0.1:5432:5432"
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d postgres"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+
+  zookeeper:
+    image: confluentinc/cp-zookeeper:7.0.1
+    environment:
+      ZOOKEEPER_CLIENT_PORT: 2181
+      ZOOKEEPER_TICK_TIME: 2000
+
+  kafka:
+    image: confluentinc/cp-kafka:7.0.1
+    depends_on:
+      zookeeper:
+        condition: service_started
+    ports:
+      - "127.0.0.1:19092:19092"
+    environment:
+      KAFKA_BROKER_ID: 1
+      KAFKA_ZOOKEEPER_CONNECT: zookeeper:2181
+      KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: PLAINTEXT:PLAINTEXT,PLAINTEXT_HOST:PLAINTEXT
+      KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://kafka:9092,PLAINTEXT_HOST://localhost:19092
+      KAFKA_INTER_BROKER_LISTENER_NAME: PLAINTEXT
+      KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
+      KAFKA_TRANSACTION_STATE_LOG_MIN_ISR: 1
+      KAFKA_TRANSACTION_STATE_LOG_REPLICATION_FACTOR: 1
+    healthcheck:
+      test: ["CMD-SHELL", "kafka-topics --bootstrap-server localhost:9092 --list"]
+      interval: 5s
+      timeout: 10s
+      retries: 30
+
+  schema-registry:
+    image: confluentinc/cp-schema-registry:7.0.1
+    depends_on:
+      kafka:
+        condition: service_healthy
+    ports:
+      - "127.0.0.1:8081:8081"
+    environment:
+      SCHEMA_REGISTRY_HOST_NAME: schema-registry
+      SCHEMA_REGISTRY_LISTENERS: http://0.0.0.0:8081
+      SCHEMA_REGISTRY_KAFKASTORE_BOOTSTRAP_SERVERS: PLAINTEXT://kafka:9092
+    healthcheck:
+      test: ["CMD-SHELL", "curl --fail --silent http://localhost:8081/subjects > /dev/null"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+
+  topic-init:
+    image: confluentinc/cp-kafka:7.0.1
+    depends_on:
+      kafka:
+        condition: service_healthy
+    entrypoint: ["/bin/bash", "-ec"]
+    command: >
+      for topic in payment-request payment-response restaurant-approval-request restaurant-approval-response;
+      do kafka-topics --bootstrap-server kafka:9092 --create --if-not-exists
+      --topic "$$topic" --replication-factor 1 --partitions 3;
+      done
+
+  customer-service:
+    build:
+      context: .
+      args:
+        SERVICE_MODULE: customer-service
+        JAR_FILE: customer-service/target/customer-service-1.0-SNAPSHOT.jar
+    environment:
+      <<: *application-environment
+      SERVER_PORT: 8184
+      SPRING_DATASOURCE_URL: jdbc:postgresql://postgres:5432/postgres?currentSchema=customer&binaryTransfer=true&reWriteBatchedInserts=true
+    ports:
+      - "127.0.0.1:8184:8184"
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+  payment-service:
+    build:
+      context: .
+      args:
+        SERVICE_MODULE: payment-service/payment-container
+        JAR_FILE: payment-service/payment-container/target/payment-container-1.0-SNAPSHOT.jar
+    environment:
+      <<: *application-environment
+      SERVER_PORT: 8182
+      SPRING_DATASOURCE_URL: jdbc:postgresql://postgres:5432/postgres?currentSchema=payment&binaryTransfer=true&reWriteBatchedInserts=true&stringtype=unspecified
+    ports:
+      - "127.0.0.1:8182:8182"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      schema-registry:
+        condition: service_healthy
+      topic-init:
+        condition: service_completed_successfully
+
+  restaurant-service:
+    build:
+      context: .
+      args:
+        SERVICE_MODULE: restaurant-service/restaurant-container
+        JAR_FILE: restaurant-service/restaurant-container/target/restaurant-container-1.0-SNAPSHOT.jar
+    environment:
+      <<: *application-environment
+      SERVER_PORT: 8183
+      SPRING_DATASOURCE_URL: jdbc:postgresql://postgres:5432/postgres?currentSchema=restaurant&binaryTransfer=true&reWriteBatchedInserts=true&stringtype=unspecified
+    ports:
+      - "127.0.0.1:8183:8183"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      schema-registry:
+        condition: service_healthy
+      topic-init:
+        condition: service_completed_successfully
+
+  order-service:
+    build:
+      context: .
+      args:
+        SERVICE_MODULE: order-service/order-container
+        JAR_FILE: order-service/order-container/target/order-container-1.0-SNAPSHOT.jar
+    environment:
+      <<: *application-environment
+      SERVER_PORT: 8181
+      SPRING_DATASOURCE_URL: jdbc:postgresql://postgres:5432/postgres?currentSchema=order&binaryTransfer=true&reWriteBatchedInserts=true&stringtype=unspecified
+    ports:
+      - "127.0.0.1:8181:8181"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      schema-registry:
+        condition: service_healthy
+      topic-init:
+        condition: service_completed_successfully
+      customer-service:
+        condition: service_healthy
+      payment-service:
+        condition: service_healthy
+      restaurant-service:
+        condition: service_healthy
+
+volumes:
+  postgres-data:

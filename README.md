@@ -1,295 +1,304 @@
-# Enterprise order processing platform
+# Enterprise Order Processing Platform
 
-[![Java](https://img.shields.io/badge/Java-17-orange.svg)](https://www.oracle.com/java/technologies/javase/jdk17-archive-downloads.html)
+[![CI](https://github.com/ShahriyarSheikh/Enterprise-Order-Processing-Platform-Boilerplate/actions/workflows/ci.yml/badge.svg)](https://github.com/ShahriyarSheikh/Enterprise-Order-Processing-Platform-Boilerplate/actions/workflows/ci.yml)
+[![Java 17](https://img.shields.io/badge/Java-17-ED8B00?logo=openjdk&logoColor=white)](https://adoptium.net/temurin/releases/?version=17)
 
+An event-driven Java backend for order creation and asynchronous payment and restaurant approval using Kafka, Avro, PostgreSQL, and the transactional outbox pattern.
 
-## Table of Contents
+> **Origin and scope:** this repository is derived from
+> [`sogutemir/SpringMicroservice-outbox-kafka-saga-pattern`](https://github.com/sogutemir/SpringMicroservice-outbox-kafka-saga-pattern).
+> The upstream project supplied the core service decomposition, domain model, saga flow, Kafka/Avro messaging,
+> and initial outbox implementation. This fork preserves the Git history and contributor records and adds build
+> automation, focused tests, Flyway migrations, health checks, OpenAPI documentation, and local container
+> orchestration. See [NOTICE.md](NOTICE.md) for provenance and the important licensing caveat.
 
-- [Overview](#overview)
-- [Features](#features)
-- [Architecture](#architecture)
-- [Technologies Used](#technologies-used)
-- [Project Structure](#project-structure)
-- [Installation and Setup](#installation-and-setup)
-- [Usage](#usage)
-    - [API Endpoints](#api-endpoints)
-    - [Sample Request](#sample-request)
-- [Data Flow](#data-flow)
-- [Development Guidelines](#development-guidelines)
-    - [Adding a New Feature](#adding-a-new-feature)
-    - [Testing](#testing)
-- [Contributing](#contributing)
-- [License](#license)
-- [Contact](#contact)
+This repository provides a local reference implementation and is not a deployed production system. The sections below deliberately distinguish implemented behavior from planned work.
 
-## Overview
+## What is implemented
 
-**Food Ordering System** is a backend application built using a microservices architecture to facilitate seamless and efficient food ordering processes. Customers can place orders from various restaurants, make secure payments, and receive real-time updates, while restaurants can manage orders and menus effectively.
+- `POST /orders` creates an order and a payment outbox record in one database transaction.
+- `GET /orders/{trackingId}` returns the order's current saga-driven status.
+- The order service orchestrates payment and restaurant approval through four Kafka topics.
+- The payment worker debits or credits a **simulated internal credit ledger**. It does not integrate with a payment provider and must not be described as secure payment processing.
+- The restaurant worker checks the seeded restaurant/product read model and returns an approval or rejection.
+- Order, payment, and restaurant messaging use database outbox records and asynchronous publishers.
+- Kafka payloads use Avro with Confluent Schema Registry.
+- PostgreSQL schemas and demo data are managed by versioned Flyway migrations.
+- All four applications expose restricted Spring Boot Actuator health/info endpoints; the order service also exposes OpenAPI and Swagger UI.
+- Focused tests cover saga success, failure, compensation, duplicate responses, outbox state transitions, mapper round trips, request validation, and PostgreSQL-backed duplicate payment handling.
 
-_This README will be continuously updated to reflect the latest changes and improvements as the project progresses._
-
-## Features
-
-- **Order Management**: Place, track, and manage food orders.
-- **Payment Processing**: Secure and reliable payment transactions.
-- **Restaurant Interface**: Restaurants can approve or reject orders.
-- **Customer Profiles**: Manage customer information and order history.
-- **Real-Time Notifications**: Updates via Apache Kafka messaging.
-- **Reliable Messaging with Outbox Pattern**: Ensures consistent and reliable message delivery between services.
+There are no customer-management, payment, restaurant-management, update-order, delete-order, or notification REST APIs in this codebase.
 
 ## Architecture
 
-The project follows the **Hexagonal Architecture (Ports and Adapters)** pattern, emphasizing **Domain-Driven Design (DDD)** and **Clean Architecture** principles. This ensures a clear separation of concerns and promotes scalability and maintainability.
+```mermaid
+flowchart LR
+    Client[API client] -->|POST /orders| Order[Order service]
+    Order -->|order + payment outbox| ODB[(order schema)]
+    ODB -->|payment-request| Kafka[(Kafka + Avro)]
+    Kafka --> Payment[Payment worker]
+    Payment -->|payment + credit ledger + response outbox| PDB[(payment schema)]
+    PDB -->|payment-response| Kafka
+    Kafka --> Order
+    ODB -->|restaurant-approval-request| Kafka
+    Kafka --> Restaurant[Restaurant worker]
+    Restaurant -->|approval + response outbox| RDB[(restaurant schema)]
+    RDB -->|restaurant-approval-response| Kafka
+    Kafka --> Order
+    Order -->|GET /orders/trackingId| Client
+```
 
-- **Domain Layer**: Contains business logic and domain entities.
-- **Application Layer**: Coordinates application activities and use cases.
-- **Infrastructure Layer**: Deals with external systems like databases and messaging.
-- **Outbox Pattern Implementation**: Ensures reliable communication between microservices by persisting messages in an outbox table in the database and then publishing them to the message broker.
+The successful path is:
 
-## Technologies Used
+1. The order service validates the customer, restaurant, product, price, and order totals, persists a `PENDING` order, and writes a payment outbox record.
+2. A scheduler publishes `payment-request`; the payment worker updates its internal credit ledger and writes a response outbox record.
+3. A successful `payment-response` changes the order to `PAID` and creates a restaurant-approval outbox record.
+4. The restaurant worker validates availability and publishes its decision.
+5. Approval completes the saga with `APPROVED`. Rejection starts payment compensation and ends with `CANCELLED` after compensation succeeds. A failed initial payment cancels the order directly.
 
-- **Programming Language**: Java 17
-- **Frameworks and Libraries**:
-    - Spring Boot
-    - Spring Data JPA
-    - Spring Transaction Management
-- **Messaging and Streaming**: Apache Kafka
-- **Database**: PostgreSQL
-- **Containerization**: Docker
-- **Build Tool**: Maven
+| Application | Port | Actual responsibility | Business interface |
+| --- | ---: | --- | --- |
+| Order service | 8181 | Create/track orders and orchestrate the saga | REST and Kafka |
+| Payment service | 8182 | Consume payment requests, mutate the demo credit ledger, publish results/compensation results | Kafka only |
+| Restaurant service | 8183 | Consume approval requests and check restaurant/product availability | Kafka only |
+| Customer service | 8184 | Own and seed customer reference data for the demo | No business API |
 
-## Project Structure
+The services are split into domain, application, data-access, messaging, and runnable-container modules following ports-and-adapters/hexagonal boundaries. Shared infrastructure modules provide saga, outbox, Kafka producer/consumer, configuration, and Avro model support.
 
-The project is modularized, reflecting its microservices architecture:
+### Reliability boundaries
 
-### Common Modules
+This implementation provides a useful outbox/saga demonstration, but it does **not** provide exactly-once processing:
 
-- **`common`**: Shared utilities and code across microservices.
-- **`infrastructure`**: Infrastructure components like Kafka configurations and Outbox pattern implementations.
+- A new outbox row starts as `STARTED`; a Kafka send callback records `COMPLETED` or `FAILED`.
+- The application schedulers select `STARTED` rows only. A row marked `FAILED` has no automatic application-level retry or operational replay path.
+- Duplicate saga responses are ignored when the expected in-progress outbox state no longer exists. Payment handling also reuses a completed stored response, and database uniqueness constraints prevent some repeated effects.
+- The PostgreSQL duplicate test proves rollback for a replay while the first payment outbox row is still `STARTED`. Because the unique key includes `outbox_status`, a replay after that row becomes `FAILED` is not protected and can repeat payment/credit work.
+- Completed outbox records are cleaned up, so this duplicate protection is bounded by retained state; it is not permanent message deduplication.
 
-### Microservice Modules
+Kafka producer retries still apply before a send is marked failed. Production use would require an explicit retry/backoff policy, dead-letter handling, alerting, and a safe replay procedure.
 
-Each microservice comprises:
+### Data ownership caveat
 
-- **`domain`**: Domain models and core business logic.
-- **`application`**: Application services and use cases.
-- **`dataaccess`**: Data repositories and database interactions.
-- **`messaging`**: Kafka producers and consumers.
-- **`outbox`**: Components related to the Outbox pattern for reliable message handling.
-- **`container`**: Spring Boot application entry point.
+The local topology uses one PostgreSQL instance with separate `customer`, `order`, `payment`, and `restaurant` schemas. The order service reads customer and restaurant materialized views across schemas. That is convenient for this demo, but it is tighter coupling than independently owned service databases.
 
-## Installation and Setup
+## Technology stack
 
-### Prerequisites
+| Area | Technology |
+| --- | --- |
+| Runtime | Java 17, Spring Boot 2.6.3 |
+| Persistence | Spring Data JPA, PostgreSQL 14, Flyway |
+| Messaging | Apache Kafka, Spring Kafka, Apache Avro, Confluent Schema Registry |
+| Architecture | Domain-driven modules, ports and adapters, saga orchestration, transactional outbox |
+| API/operations | Spring MVC, Bean Validation, springdoc-openapi, Spring Boot Actuator |
+| Tests | JUnit 5, Mockito, Spring Boot Test, Testcontainers PostgreSQL |
+| Delivery | Maven Wrapper, GitHub Actions, Docker, Docker Compose |
 
-- **Java Development Kit (JDK) 17**
-- **Maven**
-- **Docker & Docker Compose**
+## Run the complete local demo
 
-### Steps
+Prerequisites:
 
-1. **Clone the Repository**
+- Docker with a recent Docker Compose v2 release
+- Git
+- Internet access on the first run to download container images and Maven dependencies
 
-   ```bash
-   git clone https://github.com/sogutemir/FoodOrderingSystem.git
-   ```
+Clone the repository:
 
-2. **Navigate to the Project Directory**
+```bash
+git clone https://github.com/ShahriyarSheikh/Enterprise-Order-Processing-Platform-Boilerplate.git
+cd Enterprise-Order-Processing-Platform-Boilerplate
+```
 
-   ```bash
-   cd FoodOrderingSystem
-   ```
+From the repository root, this starts the infrastructure and all four applications, waits for their health checks, creates an order priced at 50.00 using seeded IDs, and polls until the saga reaches `APPROVED`.
 
-3. **Build the Project**
+Linux/macOS/Git Bash:
 
-   ```bash
-   mvn clean package
-   ```
+```bash
+docker compose up --build --wait && sh ./scripts/smoke-test.sh
+```
 
-4. **Start Docker Containers**
+PowerShell:
 
-   Ensure that Docker is running, then start the required services:
+```powershell
+docker compose up --build --wait; if ($LASTEXITCODE -eq 0) { .\scripts\smoke-test.ps1 }
+```
 
-   ```bash
-   docker-compose -f common.yml -f init_kafka.yml up -d
-   docker-compose -f common.yml -f kafka_cluster.yml up -d
-   docker-compose -f common.yml -f zookeeper.yml up -d
-   ```
+The Compose setup binds host ports to `127.0.0.1`, uses a local-development database password, creates the four Kafka topics, runs Flyway on application startup, and runs application containers as a non-root user. It is not a production deployment configuration.
 
-5. **Run Microservices**
+Useful follow-up commands:
 
-   Open separate terminals for each microservice and run:
+```bash
+docker compose ps
+docker compose logs -f order-service payment-service restaurant-service
+docker compose down
+```
 
-   ```bash
-   # Order Service
-   java -jar order-service/order-container/target/order-container-1.0-SNAPSHOT.jar
+The seeded customer starts with a 500.00 ledger balance and each smoke test debits 50.00. The eleventh successful-path run will therefore fail payment unless earlier orders were compensated. To remove all local database state and reseed from scratch:
 
-   # Payment Service
-   java -jar payment-service/payment-container/target/payment-container-1.0-SNAPSHOT.jar
+```bash
+docker compose down -v
+```
 
-   # Restaurant Service
-   java -jar restaurant-service/restaurant-container/target/restaurant-container-1.0-SNAPSHOT.jar
+`down -v` permanently deletes the Compose-managed PostgreSQL volume.
 
-   # Customer Service
-   java -jar customer-service/customer-container/target/customer-container-1.0-SNAPSHOT.jar
-   ```
+### Verification status
 
-## Usage
+Verification snapshot (2026-08-24): the full 36-module `clean verify` reactor passed on JDK 21 with compilation targeting Java 17. Ten suites reported 24 tests, with 23 passed, no failures or errors, and the PostgreSQL Testcontainers test skipped because Docker was unavailable. The Compose definition and smoke scripts were statically reviewed but not executed locally. The included CI workflow targets Temurin 17; consult the workflow badge and Actions history for current remote status. A green CI run plus a successful smoke-script run on a Docker-capable machine should be treated as the required runtime proof.
 
-### API Endpoints
+## API
 
-The application exposes RESTful APIs for interaction. Here are some of the key endpoints:
+The order service exposes exactly two business endpoints. Both responses use `application/vnd.api.v1+json`.
 
-- **Order Service**
-    - Create Order: `POST /orders`
-    - Get Order Details: `GET /orders/{orderId}`
-    - Update Order: `PUT /orders/{orderId}`
-    - Delete Order: `DELETE /orders/{orderId}`
-- **Payment Service**
-    - Process Payment: `POST /payments`
-- **Restaurant Service**
-    - Approve Order: `POST /restaurants/{restaurantId}/orders/{orderId}/approve`
-    - Reject Order: `POST /restaurants/{restaurantId}/orders/{orderId}/reject`
-- **Customer Service**
-    - Register Customer: `POST /customers`
-    - Get Customer Info: `GET /customers/{customerId}`
+| Method | Path | Behavior |
+| --- | --- | --- |
+| `POST` | `/orders` | Validate and create an order; returns immediately with the initial status |
+| `GET` | `/orders/{trackingId}` | Return the current status and any failure messages by tracking UUID |
 
-### Sample Request
+### Create an order
 
-**Create Order**
+The following IDs and prices are inserted by the Flyway demo migrations:
 
-**Endpoint:** `POST http://localhost:8181/orders`
-
-**Headers:**
-
-- `Content-Type: application/json`
-
-**Request Body:**
-
-```json
-{
-  "customerId": "d215b5f8-0249-4dc5-89a3-51fd148cfb41",
-  "restaurantId": "d215b5f8-0249-4dc5-89a3-51fd148cfb45",
-  "address": {
-    "street": "Main Street",
-    "postalCode": "12345",
-    "city": "Amsterdam"
-  },
-  "price": 200.00,
-  "items": [
-    {
-      "productId": "product-1",
-      "quantity": 1,
-      "price": 50.00,
-      "subTotal": 50.00
+```bash
+curl --request POST 'http://localhost:8181/orders' \
+  --header 'Accept: application/vnd.api.v1+json' \
+  --header 'Content-Type: application/json' \
+  --data '{
+    "customerId": "d215b5f8-0249-4dc5-89a3-51fd148cfb41",
+    "restaurantId": "d215b5f8-0249-4dc5-89a3-51fd148cfb45",
+    "address": {
+      "street": "Alexanderplatz 1",
+      "postalCode": "10178",
+      "city": "Berlin"
     },
-    {
-      "productId": "product-2",
-      "quantity": 3,
-      "price": 50.00,
-      "subTotal": 150.00
-    }
-  ]
-}
+    "price": 50.00,
+    "items": [
+      {
+        "productId": "d215b5f8-0249-4dc5-89a3-51fd148cfb48",
+        "quantity": 1,
+        "price": 50.00,
+        "subTotal": 50.00
+      }
+    ]
+  }'
 ```
 
-**Response:**
+The immediate response has this shape:
 
 ```json
 {
-  "orderId": "order-123",
-  "status": "PENDING",
-  "message": "Order created successfully."
+  "orderTrackingId": "generated-uuid",
+  "orderStatus": "PENDING",
+  "message": "Order created successfully"
 }
 ```
 
-For detailed API documentation, refer to the [API Documentation](https://github.com/sogutemir/FoodOrderingSystem/wiki).
+### Track the saga
 
-## Data Flow
+Replace the path value with `orderTrackingId` from the create response:
 
-1. **Order Placement**: Customer places an order via the **Order Service**.
-2. **Outbox Logging**: The **Order Service** saves the order and writes an event to the outbox table within the same transaction.
-3. **Message Dispatch**: A background process reads events from the outbox table and publishes them to **Apache Kafka**.
-4. **Payment Processing**: The **Payment Service** consumes the event from Kafka, processes the payment, and uses the Outbox pattern to communicate back.
-5. **Order Approval**: The **Restaurant Service** receives the event, approves the order, and updates the order status.
-6. **Notification**: The customer receives updates on the order status.
+```bash
+curl --header 'Accept: application/vnd.api.v1+json' \
+  'http://localhost:8181/orders/generated-uuid'
+```
 
-_By utilizing the Outbox pattern, we ensure that message delivery between microservices is reliable and consistent, maintaining data integrity across services._
+A successful demo eventually returns:
 
-## Development Guidelines
+```json
+{
+  "orderTrackingId": "generated-uuid",
+  "orderStatus": "APPROVED",
+  "failureMessages": []
+}
+```
 
-### Adding a New Feature
+Status changes are asynchronous; intermediate responses can be `PENDING` or `PAID`. Failure/compensation paths can expose `CANCELLING` and `CANCELLED` with failure messages.
 
-1. **Domain Layer**
+## API documentation and health
 
-    - Define new entities or value objects.
-    - Implement business logic and rules.
+OpenAPI is intentionally limited to the order service because the other applications have no business controllers:
 
-2. **Application Layer**
+- Swagger UI: <http://localhost:8181/swagger-ui.html>
+- OpenAPI JSON: <http://localhost:8181/v3/api-docs>
 
-    - Create or update application services.
-    - Define use cases.
+Actuator exposes only `health` and `info` over HTTP. Health details are not disclosed.
 
-3. **Data Access Layer**
+| Application | Health URL |
+| --- | --- |
+| Order | <http://localhost:8181/actuator/health> |
+| Payment | <http://localhost:8182/actuator/health> |
+| Restaurant | <http://localhost:8183/actuator/health> |
+| Customer | <http://localhost:8184/actuator/health> |
 
-    - Add or modify repository interfaces.
-    - Implement data access logic.
-    - Implement Outbox entities and repositories if necessary.
+## Database migrations
 
-4. **Messaging**
+Each runnable application ships `src/main/resources/db/migration` scripts. The customer and restaurant migration sets also maintain materialized views in the order schema, reflecting the cross-schema coupling described above. Across the four applications:
 
-    - Update Kafka producers and consumers.
-    - Define new topics if necessary.
-    - Ensure messages are written to the Outbox table within the same transaction as the domain event.
+- `V1` creates the applicable schema, domain tables/types, indexes, outbox tables, and read models.
+- `V2` inserts deterministic demo data where needed.
 
-5. **API Layer**
+Flyway runs on application startup, records applied versions, creates missing schemas, and has `clean` disabled. The migrations replace ad-hoc Spring SQL initialization; they do not silently drop an existing database.
 
-    - Update controllers.
-    - Define new endpoints.
+Only the payment migrations are currently executed against a real database by the Testcontainers suite; the other three migration sets have been statically checked but still need database-executed tests. An existing pre-Flyway, non-empty database has no Flyway history and will fail safely because automatic baselining is disabled. For a clean local migration run, reset the Compose volume with `docker compose down -v` and start the stack again.
 
-### Testing
+## Build and test
 
-- **Unit Tests**: Use JUnit and Mockito.
-- **Integration Tests**: Use Testcontainers for databases and Kafka.
-- **End-to-End Tests**: Validate the complete workflow.
-- **Outbox Pattern Tests**: Ensure that events are correctly written to and read from the outbox table.
+JDK 17 or newer is required for a host build; compilation targets Java 17, and CI uses Temurin 17. Maven itself does not need to be installed because the repository includes the Maven Wrapper.
 
-## Contributing
+Linux/macOS/Git Bash:
 
-We welcome contributions! To contribute:
+```bash
+./mvnw clean verify
+```
 
-1. **Fork the Project**
+Windows PowerShell:
 
-   ```bash
-   git clone https://github.com/your-username/FoodOrderingSystem.git
-   ```
+```powershell
+.\mvnw.cmd clean verify
+```
 
-2. **Create a Feature Branch**
+The suite includes:
 
-   ```bash
-   git checkout -b feature/YourFeatureName
-   ```
+- deterministic Mockito tests for payment and restaurant-approval saga success, failure, and compensation;
+- duplicate-response no-op tests and completed-payment response replay tests;
+- outbox publish-callback tests for `STARTED` to `COMPLETED`/`FAILED` transitions;
+- order/payment/restaurant outbox persistence-mapper round-trip tests, including processed timestamps;
+- controller validation tests for malformed UUID input and nested address constraints;
+- a Testcontainers PostgreSQL service-layer test that verifies a duplicate payment request is rolled back without repeating credit/payment/outbox effects while the original outbox row is `STARTED`.
 
-3. **Commit Your Changes**
+`PaymentRequestMessageListenerTest` uses `postgres:14-alpine` and is annotated with `disabledWithoutDocker = true`. It runs when Docker is discoverable and is skipped otherwise. There is not yet a Kafka/Schema Registry Testcontainers or full end-to-end integration test.
 
-   ```bash
-   git commit -m "Add YourFeatureName"
-   ```
+## Continuous integration
 
-4. **Push to the Branch**
+`.github/workflows/ci.yml` runs on pushes, pull requests, and manual dispatch. It uses Temurin Java 17, caches Maven dependencies, and executes:
 
-   ```bash
-   git push origin feature/YourFeatureName
-   ```
+```bash
+bash ./mvnw --batch-mode --no-transfer-progress clean verify
+```
 
-5. **Open a Pull Request**
+The badge at the top reflects GitHub-hosted workflow runs. It does not cover Docker Compose startup, the smoke test, or deployment.
 
-   Submit your pull request, and we will review it as soon as possible.
+## Scope and authorship
 
-## License
+This repository extends the attributed upstream codebase with GitHub Actions CI, Flyway migrations, Actuator health checks, OpenAPI documentation, Docker Compose orchestration, and focused saga, outbox, and bounded duplicate-handling tests using JUnit, Mockito, and Testcontainers PostgreSQL.
 
-This project is licensed under the **MIT License**. See the [LICENSE](https://github.com/sogutemir/FoodOrderingSystem/blob/main/LICENSE) file for details.
+The inherited service design and core saga/outbox implementation remain attributed in [NOTICE.md](NOTICE.md). Current scope excludes secure/external payment processing, exactly-once delivery, customer/restaurant CRUD APIs, production deployment, and comprehensive end-to-end coverage.
 
+## Known limitations and roadmap
 
+The highest-value next improvements are:
 
----
+1. Upgrade the inherited Spring Boot 2.6.3 baseline to a supported Spring Boot release and migrate `javax` APIs to `jakarta`.
+2. Add explicit retry/backoff, dead-letter topics, failed-outbox replay, metrics, and operational alerting.
+3. Add Kafka + Schema Registry Testcontainers tests, contract tests, and a repeatable CI end-to-end smoke test.
+4. Replace cross-schema materialized-view reads with event-maintained local read models or service APIs and independently owned databases. Until then, refresh the restaurant view when `restaurants` or `products` change, not only when `restaurant_products` changes.
+5. Align the inherited order-address database key `(id, order_id)` with the JPA identity model, which currently treats only `id` as the entity identity.
+6. Add authentication/authorization, secrets management, rate limiting, and security/dependency scanning.
+7. Add metrics, distributed tracing, dashboards, structured correlation IDs, load tests, and failure-injection tests.
+8. Provide a real deployment target with infrastructure-as-code and deployment evidence; today the runnable proof is local Compose only.
+9. Resolve the upstream licensing ambiguity before copying or redistributing the project.
+
+## Attribution and licensing
+
+The original history and contributors remain visible in Git. The canonical upstream project is
+[`sogutemir/SpringMicroservice-outbox-kafka-saga-pattern`](https://github.com/sogutemir/SpringMicroservice-outbox-kafka-saga-pattern).
+
+No license file is present in the inherited repository history or in this repository at the time of writing. [NOTICE.md](NOTICE.md) records provenance but does not grant a license. Obtain clarification from the relevant rights holder before reuse or redistribution beyond permissions provided by law.
