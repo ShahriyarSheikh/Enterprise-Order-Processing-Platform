@@ -256,7 +256,6 @@ Windows PowerShell:
 ```
 
 The suite includes:
-
 - deterministic Mockito tests for payment and restaurant-approval saga success, failure, and compensation;
 - duplicate-response no-op tests and completed-payment response replay tests;
 - outbox publish-callback tests for `STARTED` to `COMPLETED`/`FAILED` transitions;
