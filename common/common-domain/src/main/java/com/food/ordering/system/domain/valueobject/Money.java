@@ -2,7 +2,6 @@ package com.food.ordering.system.domain.valueobject;
 
 import java.math.BigDecimal;
 import java.math.RoundingMode;
-import java.util.Objects;
 
 public class Money {
     private final BigDecimal amount;
@@ -42,12 +41,15 @@ public class Money {
         if (this == o) return true;
         if (o == null || getClass() != o.getClass()) return false;
         Money money = (Money) o;
-        return amount.equals(money.amount);
+        if (amount == null || money.amount == null) {
+            return amount == money.amount;
+        }
+        return amount.compareTo(money.amount) == 0;
     }
 
     @Override
     public int hashCode() {
-        return Objects.hash(amount);
+        return amount == null ? 0 : amount.stripTrailingZeros().hashCode();
     }
 
     private BigDecimal setScale(BigDecimal input) {
