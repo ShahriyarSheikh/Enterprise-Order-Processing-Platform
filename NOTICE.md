@@ -6,8 +6,9 @@ formerly available as `sogutemir/FoodOrderingSystem`.
 
 The original Git history and contributor records are intentionally preserved. The core service decomposition,
 domain model, saga flow, Kafka/Avro messaging, and initial outbox implementation originate from that upstream
-work. Changes introduced in this fork add or improve build automation, tests, database migrations,
-runtime documentation, observability, API documentation, and local container orchestration.
+work. Changes introduced in this fork add or improve Spring Boot and Jakarta modernization, build automation,
+tests, database migrations, runtime documentation, observability, API documentation, and local container
+orchestration.
 
 ## Licensing note
 

@@ -9,8 +9,9 @@ An event-driven Java backend for order creation and asynchronous payment and res
 > [`sogutemir/SpringMicroservice-outbox-kafka-saga-pattern`](https://github.com/sogutemir/SpringMicroservice-outbox-kafka-saga-pattern).
 > The upstream project supplied the core service decomposition, domain model, saga flow, Kafka/Avro messaging,
 > and initial outbox implementation. This fork preserves the Git history and contributor records and adds build
-> automation, focused tests, Flyway migrations, health checks, OpenAPI documentation, and local container
-> orchestration. See [NOTICE.md](NOTICE.md) for provenance and the important licensing caveat.
+> automation, a Spring Boot 3 and Jakarta migration, focused tests, Flyway migrations, health checks, OpenAPI
+> documentation, and local container orchestration. See [NOTICE.md](NOTICE.md) for provenance and the important
+> licensing caveat.
 
 This repository provides a local reference implementation and is not a deployed production system. The sections below deliberately distinguish implemented behavior from planned work.
 
@@ -85,7 +86,7 @@ The local topology uses one PostgreSQL instance with separate `customer`, `order
 
 | Area | Technology |
 | --- | --- |
-| Runtime | Java 17, Spring Boot 2.6.3 |
+| Runtime | Java 17, Spring Boot 3.5.16, Spring Framework 6 |
 | Persistence | Spring Data JPA, PostgreSQL 14, Flyway |
 | Messaging | Apache Kafka, Spring Kafka, Apache Avro, Confluent Schema Registry |
 | Architecture | Domain-driven modules, ports and adapters, saga orchestration, transactional outbox |
@@ -142,7 +143,7 @@ docker compose down -v
 
 ### Verification status
 
-Verification snapshot (2026-09-11): the full 36-module `clean verify` reactor passed in a Temurin Java 17 Maven container. Docker Desktop 29 initially rejected Testcontainers' legacy Docker API default, so that full run skipped the Docker-dependent test; after pinning docker-java API 1.44 in the test resources, the focused PostgreSQL integration test passed with no skip. The collected Surefire reports contain 27 passing tests with no failures, errors, or skips. A clean Compose build then started all four applications plus PostgreSQL, Kafka, ZooKeeper, and Schema Registry; every application health endpoint returned `UP`, all four Flyway schemas reached version 2, Swagger UI returned HTTP 200, the OpenAPI document exposed the two implemented paths, and the smoke test observed `PENDING` -> `PAID` -> `APPROVED`. Consult the workflow badge and Actions history for current remote CI status.
+Verification snapshot (2026-09-11): after the Spring Boot 3.5.16 migration, the 36-module `clean verify` reactor passed locally with 29 tests and no failures, errors, or skips. The build targets Java 17; the complete application image set also compiled inside Temurin Java 17 build containers. Compose started all four applications plus PostgreSQL, Kafka, ZooKeeper, and Schema Registry; every application health endpoint returned `UP`, all four Flyway schemas were at version 2, Swagger UI returned HTTP 200, and the OpenAPI document exposed only the two implemented paths. The smoke test observed `PENDING` -> `PAID` -> `APPROVED`. GitHub Actions executes `clean verify` on Temurin Java 17; consult the workflow badge and Actions history for the latest remote result.
 
 ## API
 
@@ -278,7 +279,7 @@ The badge at the top reflects GitHub-hosted workflow runs. It does not cover Doc
 
 ## Scope and authorship
 
-This repository extends the attributed upstream codebase with GitHub Actions CI, Flyway migrations, Actuator health checks, OpenAPI documentation, Docker Compose orchestration, and focused saga, outbox, and bounded duplicate-handling tests using JUnit, Mockito, and Testcontainers PostgreSQL.
+This repository extends the attributed upstream codebase with a Spring Boot 3/Spring Framework 6 and Jakarta migration, GitHub Actions CI, Flyway migrations, Actuator health checks, OpenAPI documentation, Docker Compose orchestration, and focused saga, outbox, and bounded duplicate-handling tests using JUnit, Mockito, and Testcontainers PostgreSQL.
 
 The inherited service design and core saga/outbox implementation remain attributed in [NOTICE.md](NOTICE.md). Current scope excludes secure/external payment processing, exactly-once delivery, customer/restaurant CRUD APIs, production deployment, and comprehensive end-to-end coverage.
 
@@ -286,7 +287,7 @@ The inherited service design and core saga/outbox implementation remain attribut
 
 The highest-value next improvements are:
 
-1. Upgrade the inherited Spring Boot 2.6.3 baseline to a supported Spring Boot release and migrate `javax` APIs to `jakarta`.
+1. Upgrade from the final Spring Boot 3.x line to Spring Boot 4 and complete the associated Jackson 3 migration.
 2. Add explicit retry/backoff, dead-letter topics, failed-outbox replay, metrics, and operational alerting.
 3. Add Kafka + Schema Registry Testcontainers tests, contract tests, and a repeatable CI end-to-end smoke test.
 4. Replace cross-schema materialized-view reads with event-maintained local read models or service APIs and independently owned databases. Until then, refresh the restaurant view when `restaurants` or `products` change, not only when `restaurant_products` changes.
