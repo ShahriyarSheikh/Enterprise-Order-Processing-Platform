@@ -1,6 +1,6 @@
 # Enterprise Order Processing Platform
 
-[![CI](https://github.com/ShahriyarSheikh/Enterprise-Order-Processing-Platform-Boilerplate/actions/workflows/ci.yml/badge.svg)](https://github.com/ShahriyarSheikh/Enterprise-Order-Processing-Platform-Boilerplate/actions/workflows/ci.yml)
+[![CI](https://github.com/ShahriyarSheikh/Enterprise-Order-Processing-Platform/actions/workflows/ci.yml/badge.svg)](https://github.com/ShahriyarSheikh/Enterprise-Order-Processing-Platform/actions/workflows/ci.yml)
 [![Java 17](https://img.shields.io/badge/Java-17-ED8B00?logo=openjdk&logoColor=white)](https://adoptium.net/temurin/releases/?version=17)
 
 An event-driven Java backend for order creation and asynchronous payment and restaurant approval using Kafka, Avro, PostgreSQL, and the transactional outbox pattern.
@@ -104,8 +104,8 @@ Prerequisites:
 Clone the repository:
 
 ```bash
-git clone https://github.com/ShahriyarSheikh/Enterprise-Order-Processing-Platform-Boilerplate.git
-cd Enterprise-Order-Processing-Platform-Boilerplate
+git clone https://github.com/ShahriyarSheikh/Enterprise-Order-Processing-Platform.git
+cd Enterprise-Order-Processing-Platform
 ```
 
 From the repository root, this starts the infrastructure and all four applications, waits for their health checks, creates an order priced at 50.00 using seeded IDs, and polls until the saga reaches `APPROVED`.
