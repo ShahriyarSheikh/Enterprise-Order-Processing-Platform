@@ -7,7 +7,7 @@ import com.food.ordering.system.restaurant.service.dataaccess.restaurant.outbox.
 import com.food.ordering.system.restaurant.service.domain.outbox.model.OrderOutboxMessage;
 import org.junit.jupiter.api.Test;
 
-import javax.persistence.Version;
+import jakarta.persistence.Version;
 import java.time.ZoneOffset;
 import java.time.ZonedDateTime;
 import java.util.UUID;

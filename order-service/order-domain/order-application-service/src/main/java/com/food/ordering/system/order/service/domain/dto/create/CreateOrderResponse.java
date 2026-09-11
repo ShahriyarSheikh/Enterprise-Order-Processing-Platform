@@ -3,7 +3,7 @@ package com.food.ordering.system.order.service.domain.dto.create;
 import com.food.ordering.system.domain.valueobject.OrderStatus;
 import lombok.*;
 
-import javax.validation.constraints.NotNull;
+import jakarta.validation.constraints.NotNull;
 import java.util.UUID;
 
 @Getter

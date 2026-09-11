@@ -2,7 +2,7 @@ package com.food.ordering.system.order.service.domain.dto.create;
 
 import lombok.*;
 import lombok.extern.jackson.Jacksonized;
-import javax.validation.constraints.NotNull;
+import jakarta.validation.constraints.NotNull;
 import java.math.BigDecimal;
 import java.util.UUID;
 
