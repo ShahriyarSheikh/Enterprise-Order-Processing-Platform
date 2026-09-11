@@ -15,11 +15,8 @@ RUN --mount=type=cache,target=/root/.m2 \
 FROM eclipse-temurin:17-jre-jammy
 WORKDIR /app
 
-RUN apt-get update \
-    && apt-get install --yes --no-install-recommends curl \
-    && groupadd --system application \
-    && useradd --system --gid application --home-dir /app --shell /usr/sbin/nologin application \
-    && rm -rf /var/lib/apt/lists/*
+RUN groupadd --system application \
+    && useradd --system --gid application --home-dir /app --shell /usr/sbin/nologin application
 
 COPY --from=build --chown=application:application /workspace/application.jar application.jar
 

@@ -1,6 +1,6 @@
 # Enterprise Order Processing Platform
 
-[![CI](https://github.com/ShahriyarSheikh/Enterprise-Order-Processing-Platform-Boilerplate/actions/workflows/ci.yml/badge.svg)](https://github.com/ShahriyarSheikh/Enterprise-Order-Processing-Platform-Boilerplate/actions/workflows/ci.yml)
+[![CI](https://github.com/ShahriyarSheikh/Enterprise-Order-Processing-Platform/actions/workflows/ci.yml/badge.svg)](https://github.com/ShahriyarSheikh/Enterprise-Order-Processing-Platform/actions/workflows/ci.yml)
 [![Java 17](https://img.shields.io/badge/Java-17-ED8B00?logo=openjdk&logoColor=white)](https://adoptium.net/temurin/releases/?version=17)
 
 An event-driven Java backend for order creation and asynchronous payment and restaurant approval using Kafka, Avro, PostgreSQL, and the transactional outbox pattern.
@@ -104,8 +104,8 @@ Prerequisites:
 Clone the repository:
 
 ```bash
-git clone https://github.com/ShahriyarSheikh/Enterprise-Order-Processing-Platform-Boilerplate.git
-cd Enterprise-Order-Processing-Platform-Boilerplate
+git clone https://github.com/ShahriyarSheikh/Enterprise-Order-Processing-Platform.git
+cd Enterprise-Order-Processing-Platform
 ```
 
 From the repository root, this starts the infrastructure and all four applications, waits for their health checks, creates an order priced at 50.00 using seeded IDs, and polls until the saga reaches `APPROVED`.
@@ -142,7 +142,7 @@ docker compose down -v
 
 ### Verification status
 
-Verification snapshot (2026-08-24): the full 36-module `clean verify` reactor passed on JDK 21 with compilation targeting Java 17. Ten suites reported 24 tests, with 23 passed, no failures or errors, and the PostgreSQL Testcontainers test skipped because Docker was unavailable. The Compose definition and smoke scripts were statically reviewed but not executed locally. The included CI workflow targets Temurin 17; consult the workflow badge and Actions history for current remote status. A green CI run plus a successful smoke-script run on a Docker-capable machine should be treated as the required runtime proof.
+Verification snapshot (2026-09-11): the full 36-module `clean verify` reactor passed in a Temurin Java 17 Maven container. Docker Desktop 29 initially rejected Testcontainers' legacy Docker API default, so that full run skipped the Docker-dependent test; after pinning docker-java API 1.44 in the test resources, the focused PostgreSQL integration test passed with no skip. The collected Surefire reports contain 27 passing tests with no failures, errors, or skips. A clean Compose build then started all four applications plus PostgreSQL, Kafka, ZooKeeper, and Schema Registry; every application health endpoint returned `UP`, all four Flyway schemas reached version 2, Swagger UI returned HTTP 200, the OpenAPI document exposed the two implemented paths, and the smoke test observed `PENDING` -> `PAID` -> `APPROVED`. Consult the workflow badge and Actions history for current remote CI status.
 
 ## API
 
@@ -237,7 +237,7 @@ Each runnable application ships `src/main/resources/db/migration` scripts. The c
 
 Flyway runs on application startup, records applied versions, creates missing schemas, and has `clean` disabled. The migrations replace ad-hoc Spring SQL initialization; they do not silently drop an existing database.
 
-Only the payment migrations are currently executed against a real database by the Testcontainers suite; the other three migration sets have been statically checked but still need database-executed tests. An existing pre-Flyway, non-empty database has no Flyway history and will fail safely because automatic baselining is disabled. For a clean local migration run, reset the Compose volume with `docker compose down -v` and start the stack again.
+The payment migrations are exercised automatically against a real PostgreSQL database by the Testcontainers suite. All four migration sets have also been exercised during the verified Compose smoke run, but the order, restaurant, and customer migrations do not yet have isolated database integration tests. An existing pre-Flyway, non-empty database has no Flyway history and will fail safely because automatic baselining is disabled. For a clean local migration run, reset the Compose volume with `docker compose down -v` and start the stack again.
 
 ## Build and test
 
@@ -261,6 +261,7 @@ The suite includes:
 - outbox publish-callback tests for `STARTED` to `COMPLETED`/`FAILED` transitions;
 - order/payment/restaurant outbox persistence-mapper round-trip tests, including processed timestamps;
 - controller validation tests for malformed UUID input and nested address constraints;
+- monetary value-object tests covering scale-insensitive equality and hash-code consistency;
 - a Testcontainers PostgreSQL service-layer test that verifies a duplicate payment request is rolled back without repeating credit/payment/outbox effects while the original outbox row is `STARTED`.
 
 `PaymentRequestMessageListenerTest` uses `postgres:14-alpine` and is annotated with `disabledWithoutDocker = true`. It runs when Docker is discoverable and is skipped otherwise. There is not yet a Kafka/Schema Registry Testcontainers or full end-to-end integration test.
