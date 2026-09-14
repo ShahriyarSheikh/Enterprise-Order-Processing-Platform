@@ -238,7 +238,7 @@ Each runnable application ships `src/main/resources/db/migration` scripts. The c
 
 Flyway runs on application startup, records applied versions, creates missing schemas, and has `clean` disabled. The migrations replace ad-hoc Spring SQL initialization; they do not silently drop an existing database.
 
-The payment migrations are exercised automatically against a real PostgreSQL database by the Testcontainers suite. All four migration sets have also been exercised during the verified Compose smoke run, but the order, restaurant, and customer migrations do not yet have isolated database integration tests. An existing pre-Flyway, non-empty database has no Flyway history and will fail safely because automatic baselining is disabled. For a clean local migration run, reset the Compose volume with `docker compose down -v` and start the stack again.
+The order and payment migrations are exercised automatically against fresh PostgreSQL databases by the Testcontainers suite. All four migration sets have also been exercised during the verified Compose smoke run, but the restaurant and customer migrations do not yet have isolated database integration tests. An existing pre-Flyway, non-empty database has no Flyway history and will fail safely because automatic baselining is disabled. For a clean local migration run, reset the Compose volume with `docker compose down -v` and start the stack again.
 
 ## Build and test
 
@@ -261,15 +261,16 @@ The suite includes:
 - duplicate-response no-op tests and completed-payment response replay tests;
 - outbox publish-callback tests for `STARTED` to `COMPLETED`/`FAILED` transitions;
 - order/payment/restaurant outbox persistence-mapper round-trip tests, including processed timestamps;
+- an order-service PostgreSQL integration test covering Flyway, persisted saga/outbox transitions, and duplicate payment-response handling;
 - controller validation tests for malformed UUID input and nested address constraints;
 - monetary value-object tests covering scale-insensitive equality and hash-code consistency;
 - a Testcontainers PostgreSQL service-layer test that verifies a duplicate payment request is rolled back without repeating credit/payment/outbox effects while the original outbox row is `STARTED`.
 
-`PaymentRequestMessageListenerTest` uses `postgres:14-alpine` and is annotated with `disabledWithoutDocker = true`. It runs when Docker is discoverable and is skipped otherwise. There is not yet a Kafka/Schema Registry Testcontainers or full end-to-end integration test.
+`OrderSagaPersistenceTest` and `PaymentRequestMessageListenerTest` use `postgres:14-alpine` and are annotated with `disabledWithoutDocker = true`. They run when Docker is discoverable and are skipped otherwise. There is not yet a Kafka/Schema Registry Testcontainers or full end-to-end integration test.
 
 ## Continuous integration
 
-`.github/workflows/ci.yml` runs on pushes, pull requests, and manual dispatch. It uses Temurin Java 17, caches Maven dependencies, and executes:
+`.github/workflows/ci.yml` runs on pushes to `main`, pull requests, and manual dispatch. It uses Temurin Java 17, caches Maven dependencies, and executes:
 
 ```bash
 bash ./mvnw --batch-mode --no-transfer-progress clean verify
