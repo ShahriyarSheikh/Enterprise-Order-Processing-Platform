@@ -91,7 +91,7 @@ The local topology uses one PostgreSQL instance with separate `customer`, `order
 | Messaging | Apache Kafka, Spring Kafka, Apache Avro, Confluent Schema Registry |
 | Architecture | Domain-driven modules, ports and adapters, saga orchestration, transactional outbox |
 | API/operations | Spring MVC, Bean Validation, springdoc-openapi, Spring Boot Actuator |
-| Tests | JUnit 5, Mockito, Spring Boot Test, Testcontainers PostgreSQL |
+| Tests | JUnit 5, Mockito, Spring Boot Test, Testcontainers PostgreSQL, Kafka, and Schema Registry |
 | Delivery | Maven Wrapper, GitHub Actions, Docker, Docker Compose |
 
 ## Run the complete local demo
@@ -262,11 +262,12 @@ The suite includes:
 - outbox publish-callback tests for `STARTED` to `COMPLETED`/`FAILED` transitions;
 - order/payment/restaurant outbox persistence-mapper round-trip tests, including processed timestamps;
 - an order-service PostgreSQL integration test covering Flyway, persisted saga/outbox transitions, and duplicate payment-response handling;
+- a Kafka/Schema Registry integration test covering real Avro schema registration, publication, consumption, and specific-record deserialization;
 - controller validation tests for malformed UUID input and nested address constraints;
 - monetary value-object tests covering scale-insensitive equality and hash-code consistency;
 - a Testcontainers PostgreSQL service-layer test that verifies a duplicate payment request is rolled back without repeating credit/payment/outbox effects while the original outbox row is `STARTED`.
 
-`OrderSagaPersistenceTest` and `PaymentRequestMessageListenerTest` use `postgres:14-alpine` and are annotated with `disabledWithoutDocker = true`. They run when Docker is discoverable and are skipped otherwise. There is not yet a Kafka/Schema Registry Testcontainers or full end-to-end integration test.
+`OrderSagaPersistenceTest` and `PaymentRequestMessageListenerTest` use `postgres:14-alpine`. `KafkaAvroRoundTripTest` uses the same Confluent Kafka and Schema Registry 7.0.1 images as the local Compose stack. All three tests are annotated with `disabledWithoutDocker = true`; they run when Docker is discoverable and are skipped otherwise. There is not yet a full multi-service end-to-end integration test.
 
 ## Continuous integration
 
@@ -280,7 +281,7 @@ The badge at the top reflects GitHub-hosted workflow runs. It does not cover Doc
 
 ## Scope and authorship
 
-This repository extends the attributed upstream codebase with a Spring Boot 3/Spring Framework 6 and Jakarta migration, GitHub Actions CI, Flyway migrations, Actuator health checks, OpenAPI documentation, Docker Compose orchestration, and focused saga, outbox, and bounded duplicate-handling tests using JUnit, Mockito, and Testcontainers PostgreSQL.
+This repository extends the attributed upstream codebase with a Spring Boot 3/Spring Framework 6 and Jakarta migration, GitHub Actions CI, Flyway migrations, Actuator health checks, OpenAPI documentation, Docker Compose orchestration, and focused saga, outbox, duplicate-handling, database, and Avro messaging tests using JUnit, Mockito, and Testcontainers.
 
 The inherited service design and core saga/outbox implementation remain attributed in [NOTICE.md](NOTICE.md). Current scope excludes secure/external payment processing, exactly-once delivery, customer/restaurant CRUD APIs, production deployment, and comprehensive end-to-end coverage.
 
@@ -290,7 +291,7 @@ The highest-value next improvements are:
 
 1. Upgrade from the final Spring Boot 3.x line to Spring Boot 4 and complete the associated Jackson 3 migration.
 2. Add explicit retry/backoff, dead-letter topics, failed-outbox replay, metrics, and operational alerting.
-3. Add Kafka + Schema Registry Testcontainers tests, contract tests, and a repeatable CI end-to-end smoke test.
+3. Add broader message contract coverage and a repeatable CI multi-service end-to-end smoke test.
 4. Replace cross-schema materialized-view reads with event-maintained local read models or service APIs and independently owned databases. Until then, refresh the restaurant view when `restaurants` or `products` change, not only when `restaurant_products` changes.
 5. Align the inherited order-address database key `(id, order_id)` with the JPA identity model, which currently treats only `id` as the entity identity.
 6. Add authentication/authorization, secrets management, rate limiting, and security/dependency scanning.
