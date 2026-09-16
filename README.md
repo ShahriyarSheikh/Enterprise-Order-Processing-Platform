@@ -143,7 +143,7 @@ docker compose down -v
 
 ### Verification status
 
-Verification snapshot (2026-09-11): after the Spring Boot 3.5.16 migration, the 36-module `clean verify` reactor passed locally with 29 tests and no failures, errors, or skips. The build targets Java 17; the complete application image set also compiled inside Temurin Java 17 build containers. Compose started all four applications plus PostgreSQL, Kafka, ZooKeeper, and Schema Registry; every application health endpoint returned `UP`, all four Flyway schemas were at version 2, Swagger UI returned HTTP 200, and the OpenAPI document exposed only the two implemented paths. The smoke test observed `PENDING` -> `PAID` -> `APPROVED`. GitHub Actions executes `clean verify` on Temurin Java 17; consult the workflow badge and Actions history for the latest remote result.
+Verification snapshot (2026-09-16): GitHub Actions ran the 36-module `clean verify` reactor on Temurin Java 17 with 32 tests and no failures, errors, or skips. This included fresh PostgreSQL containers plus a real Kafka and Schema Registry Avro round trip. In the earlier full Compose smoke run, all four application images compiled in Java 17 build containers; all applications and infrastructure services started; every health endpoint returned `UP`; all four Flyway schemas reached version 2; Swagger UI returned HTTP 200; the OpenAPI document exposed only the two implemented paths; and the observed order state progressed from `PENDING` to `PAID` to `APPROVED`. Consult the workflow badge and Actions history for the latest remote result.
 
 ## API
 
