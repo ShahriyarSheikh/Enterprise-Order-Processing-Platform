@@ -1,6 +1,7 @@
 # Enterprise Order Processing Platform
 
 [![CI](https://github.com/ShahriyarSheikh/Enterprise-Order-Processing-Platform/actions/workflows/ci.yml/badge.svg)](https://github.com/ShahriyarSheikh/Enterprise-Order-Processing-Platform/actions/workflows/ci.yml)
+[![Compose Smoke Test](https://github.com/ShahriyarSheikh/Enterprise-Order-Processing-Platform/actions/workflows/compose-smoke.yml/badge.svg)](https://github.com/ShahriyarSheikh/Enterprise-Order-Processing-Platform/actions/workflows/compose-smoke.yml)
 [![Java 17](https://img.shields.io/badge/Java-17-ED8B00?logo=openjdk&logoColor=white)](https://adoptium.net/temurin/releases/?version=17)
 
 An event-driven Java backend for order creation and asynchronous payment and restaurant approval using Kafka, Avro, PostgreSQL, and the transactional outbox pattern.
@@ -143,7 +144,7 @@ docker compose down -v
 
 ### Verification status
 
-Verification snapshot (2026-09-16): GitHub Actions ran the 36-module `clean verify` reactor on Temurin Java 17 with 32 tests and no failures, errors, or skips. This included fresh PostgreSQL containers plus a real Kafka and Schema Registry Avro round trip. In the earlier full Compose smoke run, all four application images compiled in Java 17 build containers; all applications and infrastructure services started; every health endpoint returned `UP`; all four Flyway schemas reached version 2; Swagger UI returned HTTP 200; the OpenAPI document exposed only the two implemented paths; and the observed order state progressed from `PENDING` to `PAID` to `APPROVED`. Consult the workflow badge and Actions history for the latest remote result.
+Verification snapshot (2026-09-30): GitHub Actions passed the 36-module `clean verify` reactor on Temurin Java 17 with 32 tests and no failures, errors, or skips. This included fresh PostgreSQL containers plus a real Kafka and Schema Registry Avro round trip. The separate Compose workflow built all four application images, started the complete platform, reported every health-checked service as healthy, and observed one order progress from `PENDING` to `PAID` to `APPROVED` before removing every container and the PostgreSQL volume. In the earlier manual verification, all four Flyway schemas reached version 2, Swagger UI returned HTTP 200, and the OpenAPI document exposed only the two implemented paths. Consult the workflow badges and Actions history for the latest remote results.
 
 ## API
 
@@ -277,7 +278,9 @@ The suite includes:
 bash ./mvnw --batch-mode --no-transfer-progress clean verify
 ```
 
-The badge at the top reflects GitHub-hosted workflow runs. It does not cover Docker Compose startup, the smoke test, or deployment.
+`.github/workflows/compose-smoke.yml` validates runtime changes on pull requests and pushes to `main`, and it can also be started manually. It builds and starts the complete Compose stack, runs `scripts/smoke-test.sh`, captures service status and failure logs, and always removes its containers and database volume.
+
+The badges at the top distinguish the Maven test suite from the full-stack Compose smoke test. Neither workflow is deployment evidence; the Compose workflow runs an ephemeral environment on a GitHub-hosted runner.
 
 ## Scope and authorship
 
@@ -291,7 +294,7 @@ The highest-value next improvements are:
 
 1. Upgrade from the final Spring Boot 3.x line to Spring Boot 4 and complete the associated Jackson 3 migration.
 2. Add explicit retry/backoff, dead-letter topics, failed-outbox replay, metrics, and operational alerting.
-3. Add broader message contract coverage and a repeatable CI multi-service end-to-end smoke test.
+3. Add broader message contract and end-to-end failure-path coverage beyond the automated successful-order smoke test.
 4. Replace cross-schema materialized-view reads with event-maintained local read models or service APIs and independently owned databases. Until then, refresh the restaurant view when `restaurants` or `products` change, not only when `restaurant_products` changes.
 5. Align the inherited order-address database key `(id, order_id)` with the JPA identity model, which currently treats only `id` as the entity identity.
 6. Add authentication/authorization, secrets management, rate limiting, and security/dependency scanning.
