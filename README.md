@@ -144,7 +144,7 @@ docker compose down -v
 
 ### Verification status
 
-Verification snapshot (2026-09-16): GitHub Actions ran the 36-module `clean verify` reactor on Temurin Java 17 with 32 tests and no failures, errors, or skips. This included fresh PostgreSQL containers plus a real Kafka and Schema Registry Avro round trip. In the earlier full Compose smoke run, all four application images compiled in Java 17 build containers; all applications and infrastructure services started; every health endpoint returned `UP`; all four Flyway schemas reached version 2; Swagger UI returned HTTP 200; the OpenAPI document exposed only the two implemented paths; and the observed order state progressed from `PENDING` to `PAID` to `APPROVED`. Consult the workflow badge and Actions history for the latest remote result.
+Verification snapshot (2026-09-30): GitHub Actions passed the 36-module `clean verify` reactor on Temurin Java 17 with 32 tests and no failures, errors, or skips. This included fresh PostgreSQL containers plus a real Kafka and Schema Registry Avro round trip. The separate Compose workflow built all four application images, started the complete platform, reported every health-checked service as healthy, and observed one order progress from `PENDING` to `PAID` to `APPROVED` before removing every container and the PostgreSQL volume. In the earlier manual verification, all four Flyway schemas reached version 2, Swagger UI returned HTTP 200, and the OpenAPI document exposed only the two implemented paths. Consult the workflow badges and Actions history for the latest remote results.
 
 ## API
 
